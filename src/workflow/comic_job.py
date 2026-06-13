@@ -187,7 +187,7 @@ class ComicJobWorkflow:
         request_id: str,
     ) -> ComicJobState:
         if self._store.load(job_id):
-            raise ValueError(f"job_id {job_id} đã tồn tại")
+            raise ValueError(f"job_id {job_id} already exists")
 
         num_panels = num_panels or 4
         state = ComicJobState(
@@ -201,8 +201,9 @@ class ComicJobWorkflow:
             status=orchestrator_pb2.COMIC_JOB_PENDING,
             current_step="Job queued",
         )
-        self._persist(state)
+        self._persist(state) # save status for redis
 
+        # Run workflow in background thread
         thread = threading.Thread(
             target=self._run_pipeline,
             args=(job_id,),

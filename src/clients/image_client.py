@@ -22,7 +22,7 @@ class ImageAiClient:
 
   def __init__(self, settings: Settings):
     self._settings = settings
-    self._channel = grpc.insecure_channel(settings.image_ai_grpc_target)
+    self._channel = grpc.insecure_channel(settings.IMAGE_AI_GRPC_TARGET)
     self._stub = image_generation_pb2_grpc.ImageGenerationServiceStub(self._channel)
 
   def check_health(self) -> bool:
@@ -43,10 +43,10 @@ class ImageAiClient:
   ) -> ImagePanelResult:
     request = image_generation_pb2.GenerateImageRequest(
       prompt=prompt,
-      width=self._settings.image_width,
-      height=self._settings.image_height,
+      width=self._settings.IMAGE_AI_WIDTH,
+      height=self._settings.IMAGE_AI_HEIGHT,
       seed=seed,
-      num_inference_steps=self._settings.image_steps,
+      num_inference_steps=self._settings.IMAGE_AI_STEPS,
       caption_text=caption_vi,
       reference_image_url=reference_image_url or "",
     )
@@ -56,7 +56,7 @@ class ImageAiClient:
     return self._poll_task(task_id)
 
   def _poll_task(self, task_id: str) -> ImagePanelResult:
-    for attempt in range(self._settings.image_poll_max_attempts):
+    for attempt in range(self._settings.IMAGE_POLL_MAX_ATTEMPTS):
       status_resp = self._stub.GetTaskStatus(
         image_generation_pb2.TaskStatusRequest(task_id=task_id),
         timeout=15,
@@ -64,7 +64,7 @@ class ImageAiClient:
       status = status_resp.status
 
       if status == image_generation_pb2.PROCESSING:
-        time.sleep(self._settings.image_poll_interval_sec)
+        time.sleep(self._settings.IMAGE_POLL_INTERVAL_SEC)
         continue
 
       if status == image_generation_pb2.SUCCESS:
@@ -79,9 +79,9 @@ class ImageAiClient:
       if status == image_generation_pb2.FAILED:
         raise RuntimeError(status_resp.error_message or f"image-ai task {task_id} FAILED")
 
-      time.sleep(self._settings.image_poll_interval_sec)
+      time.sleep(self._settings.IMAGE_POLL_INTERVAL_SEC)
 
-    raise TimeoutError(f"image-ai task {task_id} timeout sau {self._settings.image_poll_max_attempts} lần poll")
+    raise TimeoutError(f"image-ai task {task_id} timeout sau {self._settings.IMAGE_POLL_MAX_ATTEMPTS} lần poll")
 
   def cancel_task(self, task_id: str) -> None:
     try:

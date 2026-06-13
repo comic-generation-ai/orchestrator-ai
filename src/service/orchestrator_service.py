@@ -16,7 +16,7 @@ class ComicOrchestratorService(orchestrator_pb2_grpc.ComicOrchestratorServiceSer
     def StartComicGeneration(self, request, context):
         if not (request.summary or "").strip():
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details("summary không được rỗng")
+            context.set_details("summary not empty")
             return orchestrator_pb2.StartComicGenerationResponse()
 
         num_panels = request.num_panels if request.num_panels > 0 else 4
@@ -41,11 +41,12 @@ class ComicOrchestratorService(orchestrator_pb2_grpc.ComicOrchestratorServiceSer
             status=state.status,
         )
 
+    # polling job status
     def GetComicJobStatus(self, request, context):
         state = self._workflow.get(request.job_id)
         if not state:
             context.set_code(grpc.StatusCode.NOT_FOUND)
-            context.set_details(f"job_id {request.job_id} không tồn tại")
+            context.set_details(f"job_id {request.job_id} non exists")
             return orchestrator_pb2.GetComicJobStatusResponse()
         return state.to_status_response()
 
@@ -53,7 +54,7 @@ class ComicOrchestratorService(orchestrator_pb2_grpc.ComicOrchestratorServiceSer
         state = self._workflow.cancel(request.job_id)
         if not state:
             context.set_code(grpc.StatusCode.NOT_FOUND)
-            context.set_details(f"job_id {request.job_id} không tồn tại")
+            context.set_details(f"job_id {request.job_id} non exists")
             return orchestrator_pb2.CancelComicJobResponse()
 
         return orchestrator_pb2.CancelComicJobResponse(
