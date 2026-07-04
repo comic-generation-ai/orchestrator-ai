@@ -26,9 +26,18 @@ class Settings(BaseSettings):
     REDIS_JOB_TTL_SEC: int = Field(default=86400, description="Redis job TTL in seconds")
     REDIS_DB: int = Field(default=1, description="Redis database")
 
+    # Story AI Settings (REST/FastAPI — story-ai không triển khai gRPC được)
+    # Cảnh báo: story-ai mặc định chạy port 50052 (Config.PORT trong story-ai/src/config.py)
+    # — TRÙNG với ORCHESTRATOR_GRPC_PORT mặc định (50052). Nếu chạy 2 service cùng máy,
+    # đổi 1 trong 2 port qua .env để tránh đụng.
+    STORY_AI_API_URL: str = Field(default="http://localhost:50052", description="Story AI base URL")
+    STORY_AI_TIMEOUT_SEC: float = Field(default=90.0, description="Story AI request timeout (giây)")
+
     # Configuration to load from .env file (biến dạng ORCHESTRATOR_* trong .env)
+    # Neo theo vị trí settings.py (không dùng cwd) — cùng lý do đã gặp bug ở image-ai:
+    # đường dẫn tương đối khiến Settings âm thầm bỏ qua .env nếu chạy khác cwd dự kiến.
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(Path(__file__).resolve().parent.parent.parent / ".env"),
         env_file_encoding="utf-8",
         env_prefix="ORCHESTRATOR_",
         extra="ignore",
@@ -37,6 +46,46 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return self.REDIS_URL
+
+    @property
+    def grpc_host(self) -> str:
+        return self.GRPC_HOST
+
+    @property
+    def grpc_port(self) -> int:
+        return self.GRPC_PORT
+
+    @property
+    def redis_job_ttl_sec(self) -> int:
+        return self.REDIS_JOB_TTL_SEC
+
+    @property
+    def image_ai_grpc_target(self) -> str:
+        return self.IMAGE_AI_GRPC_TARGET
+
+    @property
+    def image_width(self) -> int:
+        return self.IMAGE_AI_WIDTH
+
+    @property
+    def image_height(self) -> int:
+        return self.IMAGE_AI_HEIGHT
+
+    @property
+    def image_steps(self) -> int:
+        return self.IMAGE_AI_STEPS
+
+    @property
+    def image_poll_interval_sec(self) -> float:
+        return self.IMAGE_POLL_INTERVAL_SEC
+
+    @property
+    def image_poll_max_attempts(self) -> int:
+        return self.IMAGE_POLL_MAX_ATTEMPTS
+
+    @property
+    def story_ai_timeout_sec(self) -> float:
+        return self.STORY_AI_TIMEOUT_SEC
 
 
 @lru_cache

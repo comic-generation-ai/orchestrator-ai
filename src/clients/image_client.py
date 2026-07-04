@@ -43,10 +43,10 @@ class ImageAiClient:
   ) -> ImagePanelResult:
     request = image_generation_pb2.GenerateImageRequest(
       prompt=prompt,
-      width=self._settings.IMAGE_AI_WIDTH,
-      height=self._settings.IMAGE_AI_HEIGHT,
+      width=self._settings.image_width,
+      height=self._settings.image_height,
       seed=seed,
-      num_inference_steps=self._settings.IMAGE_AI_STEPS,
+      num_inference_steps=self._settings.image_steps,
       caption_text=caption_vi,
       reference_image_url=reference_image_url or "",
     )
@@ -64,7 +64,7 @@ class ImageAiClient:
       status = status_resp.status
 
       if status == image_generation_pb2.PROCESSING:
-        time.sleep(self._settings.IMAGE_POLL_INTERVAL_SEC)
+        time.sleep(self._settings.image_poll_interval_sec)
         continue
 
       if status == image_generation_pb2.SUCCESS:
@@ -79,9 +79,9 @@ class ImageAiClient:
       if status == image_generation_pb2.FAILED:
         raise RuntimeError(status_resp.error_message or f"image-ai task {task_id} FAILED")
 
-      time.sleep(self._settings.IMAGE_POLL_INTERVAL_SEC)
+      time.sleep(self._settings.image_poll_interval_sec)
 
-    raise TimeoutError(f"image-ai task {task_id} timeout sau {self._settings.IMAGE_POLL_MAX_ATTEMPTS} lần poll")
+    raise TimeoutError(f"image-ai task {task_id} timeout sau {self._settings.image_poll_max_attempts} lần poll")
 
   def cancel_task(self, task_id: str) -> None:
     try:

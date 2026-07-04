@@ -9,9 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 class ComicOrchestratorService(orchestrator_pb2_grpc.ComicOrchestratorServiceServicer):
-    def __init__(self, workflow: ComicJobWorkflow, image_ai_healthy: bool):
+    def __init__(self, workflow: ComicJobWorkflow, image_ai_healthy: bool, story_ai_healthy: bool = True):
         self._workflow = workflow
         self._image_ai_healthy = image_ai_healthy
+        self._story_ai_healthy = story_ai_healthy
 
     def StartComicGeneration(self, request, context):
         if not (request.summary or "").strip():
@@ -65,5 +66,8 @@ class ComicOrchestratorService(orchestrator_pb2_grpc.ComicOrchestratorServiceSer
     def CheckHealth(self, request, context):
         return orchestrator_pb2.CheckHealthResponse(
             is_alive=True,
-            dependencies={"image-ai": "ok" if self._image_ai_healthy else "unreachable"},
+            dependencies={
+                "image-ai": "ok" if self._image_ai_healthy else "unreachable",
+                "story-ai": "ok" if self._story_ai_healthy else "unreachable",
+            },
         )

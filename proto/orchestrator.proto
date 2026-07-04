@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package orchestrator;
 
-// be-comic <-> orchestrator-ai (internal gRPC)
+// be-comic ↔ orchestrator-ai (internal gRPC)
 // be-comic là client duy nhất gọi orchestrator từ application layer
 
 service ComicOrchestratorService {

@@ -9,6 +9,7 @@ from typing import Any, Optional
 
 from src.generated import orchestrator_pb2
 from src.clients.image_client import ImageAiClient
+from src.clients.story_client import StoryClient
 from src.state.redis_store import ComicJobStore
 
 logger = logging.getLogger(__name__)
@@ -17,11 +18,6 @@ PANEL_STATUS_PENDING = "PENDING"
 PANEL_STATUS_PROCESSING = "PROCESSING"
 PANEL_STATUS_SUCCESS = "SUCCESS"
 PANEL_STATUS_FAILED = "FAILED"
-
-STYLE_PROMPT_SUFFIX = (
-    "children's storybook watercolor illustration, cute semi-chibi characters, "
-    "soft pastel colors, wholesome playful mood, comic panel"
-)
 
 
 @dataclass
@@ -114,47 +110,6 @@ class ComicJobState:
         return response
 
 
-def mock_story_panels(summary: str, style: str, num_panels: int) -> list[PanelScriptData]:
-    """
-    Tạm thời mock story-ai — sau này thay bằng gRPC story-ai.
-    Chia tóm tắt thành 4 khung với caption tiếng Việt + prompt tiếng Anh.
-    """
-    summary = (summary or "").strip()
-    if not summary:
-        raise ValueError("summary không được rỗng")
-
-    scene_templates = [
-        ("Mở đầu", "opening scene, establishing shot"),
-        ("Diễn biến", "story develops, characters interact"),
-        ("Cao trào", "climax moment, emotional peak"),
-        ("Kết thúc", "happy ending scene, warm conclusion"),
-    ]
-
-    caption_templates = [
-        f"Mở đầu: {summary[:120]}",
-        "Câu chuyện bắt đầu thú vị hơn...",
-        "Mọi chuyện đến lúc quan trọng nhất!",
-        "Và họ sống hạnh phúc từ đó trở đi.",
-    ]
-
-    panels: list[PanelScriptData] = []
-    for index in range(num_panels):
-        scene_label, scene_en = scene_templates[index % len(scene_templates)]
-        prompt_en = (
-            f"{scene_en}, based on story: {summary}. "
-            f"Art style: {style or 'children'}. {STYLE_PROMPT_SUFFIX}"
-        )
-        panels.append(
-            PanelScriptData(
-                index=index,
-                caption_vi=caption_templates[index % len(caption_templates)],
-                prompt_en=prompt_en,
-                scene_description=f"{scene_label} — panel {index + 1}/{num_panels}",
-            )
-        )
-    return panels
-
-
 def _empty_panel_dict(script: PanelScriptData) -> dict[str, Any]:
     return {
         "index": script.index,
@@ -170,9 +125,10 @@ def _empty_panel_dict(script: PanelScriptData) -> dict[str, Any]:
 class ComicJobWorkflow:
     """Điều phối job sinh truyện tranh (mock story + image-ai)."""
 
-    def __init__(self, store: ComicJobStore, image_client: ImageAiClient):
+    def __init__(self, store: ComicJobStore, image_client: ImageAiClient, story_client: StoryClient):
         self._store = store
         self._image_client = image_client
+        self._story_client = story_client
         self._lock = threading.Lock()
         self._running_threads: dict[str, threading.Thread] = {}
 
@@ -187,7 +143,7 @@ class ComicJobWorkflow:
         request_id: str,
     ) -> ComicJobState:
         if self._store.load(job_id):
-            raise ValueError(f"job_id {job_id} already exists")
+            raise ValueError(f"job_id {job_id} đã tồn tại")
 
         num_panels = num_panels or 4
         state = ComicJobState(
@@ -201,9 +157,8 @@ class ComicJobWorkflow:
             status=orchestrator_pb2.COMIC_JOB_PENDING,
             current_step="Job queued",
         )
-        self._persist(state) # save status for redis
+        self._persist(state)
 
-        # Run workflow in background thread
         thread = threading.Thread(
             target=self._run_pipeline,
             args=(job_id,),
@@ -245,12 +200,29 @@ class ComicJobWorkflow:
             return
 
         try:
-            self._update(state, status=orchestrator_pb2.COMIC_JOB_STORY_GENERATING, step="Generating story (mock)")
+            self._update(state, status=orchestrator_pb2.COMIC_JOB_STORY_GENERATING, step="Generating story")
 
             if state.cancel_requested:
                 return
 
-            scripts = mock_story_panels(state.summary, state.style, state.num_panels)
+            story_result = self._story_client.generate_story(
+                job_id=state.job_id,
+                summary=state.summary,
+                style=state.style,
+                num_panels=state.num_panels,
+            )
+            scripts = [
+                PanelScriptData(
+                    index=p.index,
+                    caption_vi=p.caption_vi,
+                    prompt_en=p.prompt_en,
+                    scene_description=p.scene_description,
+                )
+                for p in story_result.panels
+            ]
+          
+            state.num_panels = len(scripts)
+            state.progress_total = len(scripts)
             state.panels = [_empty_panel_dict(script) for script in scripts]
             state.image_task_ids = [None] * len(scripts)
             self._update(state, status=orchestrator_pb2.COMIC_JOB_STORY_READY, step="Story ready")
