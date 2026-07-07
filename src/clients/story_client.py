@@ -21,6 +21,7 @@ class StoryPanelResult:
 class StoryResult:
     story_title: str
     panels: list[StoryPanelResult] = field(default_factory=list)
+    is_fallback: bool = False
 
 
 class StoryClient:
@@ -80,10 +81,33 @@ class StoryClient:
             )
         panels.sort(key=lambda p: p.index)
 
+        # Gán lại index theo vị trí thực tế sau khi sort — panel_number từ LLM có thể
+        # trùng hoặc nhảy số (1, 2, 4), nếu giữ nguyên sẽ gây IndexError/ghi đè khi
+        # workflow truy cập state.panels[index].
+        for pos, panel in enumerate(panels):
+            panel.index = pos
+
         if not panels:
             raise RuntimeError(f"story-ai không trả về panel nào cho job_id={job_id}")
 
-        return StoryResult(story_title=data.get("story_title", ""), panels=panels)
+        is_fallback = bool(data.get("is_fallback", False))
+        if is_fallback and not self.settings.story_allow_fallback:
+            raise RuntimeError(
+                f"story-ai trả kết quả mock fallback cho job_id={job_id} "
+                "(LLM lỗi hoặc thiếu API key) — dừng job để không sinh ảnh từ prompt mock. "
+                "Đặt ORCHESTRATOR_STORY_ALLOW_FALLBACK=true nếu muốn chấp nhận truyện mock."
+            )
+        if is_fallback:
+            logger.warning(
+                "story-ai trả kết quả mock fallback cho job_id=%s — tiếp tục vì "
+                "STORY_ALLOW_FALLBACK=true", job_id,
+            )
+
+        return StoryResult(
+            story_title=data.get("story_title", ""),
+            panels=panels,
+            is_fallback=is_fallback,
+        )
 
     def close(self) -> None:
         self.session.close()

@@ -31,7 +31,13 @@ class Settings(BaseSettings):
     # — TRÙNG với ORCHESTRATOR_GRPC_PORT mặc định (50052). Nếu chạy 2 service cùng máy,
     # đổi 1 trong 2 port qua .env để tránh đụng.
     STORY_AI_API_URL: str = Field(default="http://localhost:50052", description="Story AI base URL")
-    STORY_AI_TIMEOUT_SEC: float = Field(default=90.0, description="Story AI request timeout (giây)")
+    # 240s: story-ai retry tối đa 3 lần (LLM ~10-60s/lần + wait rate-limit tối đa 20s/lần)
+    # — 90s cũ khiến orchestrator ReadTimeout trong khi story-ai vẫn đang xử lý.
+    STORY_AI_TIMEOUT_SEC: float = Field(default=270.0, description="Story AI request timeout (giây)")
+    # False (mặc định): job FAILED ngay khi story-ai trả kết quả mock fallback
+    # (LLM lỗi / thiếu API key) — tránh đốt GPU sinh ảnh từ prompt mock vô nghĩa.
+    # True: chấp nhận truyện mock (dùng khi dev không có API key).
+    STORY_ALLOW_FALLBACK: bool = Field(default=False, description="Chấp nhận kết quả mock fallback từ story-ai")
 
     # Configuration to load from .env file (biến dạng ORCHESTRATOR_* trong .env)
     # Neo theo vị trí settings.py (không dùng cwd) — cùng lý do đã gặp bug ở image-ai:
@@ -86,6 +92,10 @@ class Settings(BaseSettings):
     @property
     def story_ai_timeout_sec(self) -> float:
         return self.STORY_AI_TIMEOUT_SEC
+
+    @property
+    def story_allow_fallback(self) -> bool:
+        return self.STORY_ALLOW_FALLBACK
 
 
 @lru_cache
