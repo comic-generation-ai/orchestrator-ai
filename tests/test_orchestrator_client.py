@@ -14,7 +14,7 @@ from src.generated import orchestrator_pb2, orchestrator_pb2_grpc
 
 
 def main() -> None:
-    target = "localhost:50052"
+    target = "localhost:50054"
     channel = grpc.insecure_channel(target)
     stub = orchestrator_pb2_grpc.ComicOrchestratorServiceStub(channel)
 
@@ -22,7 +22,12 @@ def main() -> None:
     print("Health:", dict(health.dependencies), "alive=", health.is_alive)
 
     job_id = str(uuid.uuid4())
-    summary = "Cậu bé Minh và chú mèo Mướp đi dạo trong công viên vào buổi sáng nắng đẹp."
+    summary = """Ngày xưa, có một chú mèo tên Miu sống trong một ngôi làng nhỏ ven biển.
+    Miu rất thích đi dạo trên bãi biển và nhặt những viên sỏi lấp lánh. 
+    Một hôm, Miu nhặt được một viên sỏi đặc biệt, nó phát sáng màu xanh huyền ảo.
+    Chú mèo mang viên sỏi về nhà và đặt trên bệ cửa sổ. 
+    Đêm đó, ánh sáng từ viên sỏi lan tỏa khắp ngôi nhà, xua tan bóng tối.
+    Mọi người trong làng đều ngạc nhiên và vui mừng, từ đó, ngôi làng trở nên ấm áp và tươi sáng hơn."""
 
     start = stub.StartComicGeneration(
         orchestrator_pb2.StartComicGenerationRequest(

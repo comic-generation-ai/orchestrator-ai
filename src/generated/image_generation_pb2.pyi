@@ -19,7 +19,7 @@ SUCCESS: ImageGenerationStatus
 FAILED: ImageGenerationStatus
 
 class GenerateImageRequest(_message.Message):
-    __slots__ = ("reference_image_url", "prompt", "width", "height", "seed", "num_inference_steps", "caption_text", "speech_bubbles")
+    __slots__ = ("reference_image_url", "prompt", "width", "height", "seed", "num_inference_steps", "caption_text", "speech_bubbles", "style")
     REFERENCE_IMAGE_URL_FIELD_NUMBER: _ClassVar[int]
     PROMPT_FIELD_NUMBER: _ClassVar[int]
     WIDTH_FIELD_NUMBER: _ClassVar[int]
@@ -28,6 +28,7 @@ class GenerateImageRequest(_message.Message):
     NUM_INFERENCE_STEPS_FIELD_NUMBER: _ClassVar[int]
     CAPTION_TEXT_FIELD_NUMBER: _ClassVar[int]
     SPEECH_BUBBLES_FIELD_NUMBER: _ClassVar[int]
+    STYLE_FIELD_NUMBER: _ClassVar[int]
     reference_image_url: str
     prompt: str
     width: int
@@ -36,7 +37,8 @@ class GenerateImageRequest(_message.Message):
     num_inference_steps: int
     caption_text: str
     speech_bubbles: _containers.RepeatedCompositeFieldContainer[SpeechBuble]
-    def __init__(self, reference_image_url: _Optional[str] = ..., prompt: _Optional[str] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., seed: _Optional[int] = ..., num_inference_steps: _Optional[int] = ..., caption_text: _Optional[str] = ..., speech_bubbles: _Optional[_Iterable[_Union[SpeechBuble, _Mapping]]] = ...) -> None: ...
+    style: str
+    def __init__(self, reference_image_url: _Optional[str] = ..., prompt: _Optional[str] = ..., width: _Optional[int] = ..., height: _Optional[int] = ..., seed: _Optional[int] = ..., num_inference_steps: _Optional[int] = ..., caption_text: _Optional[str] = ..., speech_bubbles: _Optional[_Iterable[_Union[SpeechBuble, _Mapping]]] = ..., style: _Optional[str] = ...) -> None: ...
 
 class GenerateImageResponse(_message.Message):
     __slots__ = ("task_id", "status")
@@ -53,16 +55,18 @@ class TaskStatusRequest(_message.Message):
     def __init__(self, task_id: _Optional[str] = ...) -> None: ...
 
 class TaskStatusResponse(_message.Message):
-    __slots__ = ("task_id", "status", "minio_url", "error_message")
+    __slots__ = ("task_id", "status", "minio_url", "error_message", "seed")
     TASK_ID_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
     MINIO_URL_FIELD_NUMBER: _ClassVar[int]
     ERROR_MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    SEED_FIELD_NUMBER: _ClassVar[int]
     task_id: str
     status: ImageGenerationStatus
     minio_url: str
     error_message: str
-    def __init__(self, task_id: _Optional[str] = ..., status: _Optional[_Union[ImageGenerationStatus, str]] = ..., minio_url: _Optional[str] = ..., error_message: _Optional[str] = ...) -> None: ...
+    seed: int
+    def __init__(self, task_id: _Optional[str] = ..., status: _Optional[_Union[ImageGenerationStatus, str]] = ..., minio_url: _Optional[str] = ..., error_message: _Optional[str] = ..., seed: _Optional[int] = ...) -> None: ...
 
 class CancelRequest(_message.Message):
     __slots__ = ("task_id",)

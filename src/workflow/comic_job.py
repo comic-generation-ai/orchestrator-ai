@@ -248,6 +248,7 @@ class ComicJobWorkflow:
                         prompt=script.prompt_en,
                         caption_vi=script.caption_vi,
                         reference_image_url=reference_url,
+                        style=state.style,
                     )
                 except Exception as exc:
                     logger.exception("Panel %s failed for job %s", panel_index, job_id)

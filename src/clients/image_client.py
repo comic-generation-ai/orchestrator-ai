@@ -40,6 +40,7 @@ class ImageAiClient:
     caption_vi: str,
     reference_image_url: str = "",
     seed: int = -1,
+    style: str = "",
   ) -> ImagePanelResult:
     request = image_generation_pb2.GenerateImageRequest(
       prompt=prompt,
@@ -49,6 +50,7 @@ class ImageAiClient:
       num_inference_steps=self._settings.image_steps,
       caption_text=caption_vi,
       reference_image_url=reference_image_url or "",
+      style=style or "",
     )
     response = self._stub.GenerateImageAsync(request, timeout=30)
     task_id = response.task_id
@@ -72,7 +74,7 @@ class ImageAiClient:
           raise RuntimeError(f"Task {task_id} SUCCESS nhưng thiếu minio_url")
         return ImagePanelResult(
           image_url=status_resp.minio_url,
-          seed=-1,
+          seed=status_resp.seed,
           task_id=task_id,
         )
 
