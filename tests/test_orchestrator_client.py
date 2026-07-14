@@ -22,10 +22,7 @@ def main() -> None:
     print("Health:", dict(health.dependencies), "alive=", health.is_alive)
 
     job_id = str(uuid.uuid4())
-    summary = """Ngày xưa, ở một vương quốc nọ, có một nàng công chúa xinh đẹp tên là Aurora. 
-    Một ngày nọ, khi đang dạo chơi trong khu rừng gần lâu đài, 
-    nàng bị một phù thủy độc ác bắt cóc và giam giữ trong một hang động tối tăm. 
-    Không ai dám đến cứu nàng vì lời nguyền của mụ phù thủy rất đáng sợ."""
+    summary = """Truyện cổ tích Tấm Cám - Tấm bị dì ghẻ chặt cây cau khi đang hái cau cúng cha"""
 
     start = stub.StartComicGeneration(
         orchestrator_pb2.StartComicGenerationRequest(
