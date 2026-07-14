@@ -22,7 +22,12 @@ def main() -> None:
     print("Health:", dict(health.dependencies), "alive=", health.is_alive)
 
     job_id = str(uuid.uuid4())
-    summary = """Truyện cổ tích Tấm Cám - Tấm bị dì ghẻ chặt cây cau khi đang hái cau cúng cha"""
+    summary = """Ngày xửa ngày xưa, ở một làng quê nghèo nọ, có hai chị em Tấm và Cám cùng chung sống với mẹ kế. 
+    Tấm là cô gái hiền lành, xinh đẹp và đảm đang, còn Cám lại là một cô gái lười biếng, đanh đá và gian ác. 
+    Mẹ con Cám luôn tìm cách hãm hại Tấm, bắt cô làm đủ mọi việc nặng nhọc và không cho cô được hưởng hạnh phúc. 
+    Một hôm, nhà vua mở hội thi kén rể, Tấm cũng muốn đi dự nhưng bị mẹ con Cám ngăn cản. 
+    Tấm rất buồn và thất vọng, nhưng bà Bụt đã hiện lên và giúp đỡ cô bằng cách biến những vật quen thuộc xung quanh Tấm thành những vật phẩm lộng lẫy để cô có thể đi dự hội. 
+    """
 
     start = stub.StartComicGeneration(
         orchestrator_pb2.StartComicGenerationRequest(
