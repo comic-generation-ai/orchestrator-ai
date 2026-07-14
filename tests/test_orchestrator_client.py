@@ -22,12 +22,7 @@ def main() -> None:
     print("Health:", dict(health.dependencies), "alive=", health.is_alive)
 
     job_id = str(uuid.uuid4())
-    summary = """Ngày xưa, có một chú mèo tên Miu sống trong một ngôi làng nhỏ ven biển.
-    Miu rất thích đi dạo trên bãi biển và nhặt những viên sỏi lấp lánh. 
-    Một hôm, Miu nhặt được một viên sỏi đặc biệt, nó phát sáng màu xanh huyền ảo.
-    Chú mèo mang viên sỏi về nhà và đặt trên bệ cửa sổ. 
-    Đêm đó, ánh sáng từ viên sỏi lan tỏa khắp ngôi nhà, xua tan bóng tối.
-    Mọi người trong làng đều ngạc nhiên và vui mừng, từ đó, ngôi làng trở nên ấm áp và tươi sáng hơn."""
+    summary = """Truyện cổ tích Tấm Cám - Tấm bị dì ghẻ chặt cây cau khi đang hái cau cúng cha"""
 
     start = stub.StartComicGeneration(
         orchestrator_pb2.StartComicGenerationRequest(
