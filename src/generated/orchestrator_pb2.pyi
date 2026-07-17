@@ -53,7 +53,7 @@ class StartComicGenerationResponse(_message.Message):
     def __init__(self, job_id: _Optional[str] = ..., status: _Optional[_Union[ComicJobStatus, str]] = ...) -> None: ...
 
 class PanelResult(_message.Message):
-    __slots__ = ("index", "caption_vi", "image_url", "prompt_en", "seed", "status", "error_message")
+    __slots__ = ("index", "caption_vi", "image_url", "prompt_en", "seed", "status", "error_message", "speaker", "panel_type", "speaker_position")
     INDEX_FIELD_NUMBER: _ClassVar[int]
     CAPTION_VI_FIELD_NUMBER: _ClassVar[int]
     IMAGE_URL_FIELD_NUMBER: _ClassVar[int]
@@ -61,6 +61,9 @@ class PanelResult(_message.Message):
     SEED_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
     ERROR_MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    SPEAKER_FIELD_NUMBER: _ClassVar[int]
+    PANEL_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SPEAKER_POSITION_FIELD_NUMBER: _ClassVar[int]
     index: int
     caption_vi: str
     image_url: str
@@ -68,7 +71,10 @@ class PanelResult(_message.Message):
     seed: int
     status: str
     error_message: str
-    def __init__(self, index: _Optional[int] = ..., caption_vi: _Optional[str] = ..., image_url: _Optional[str] = ..., prompt_en: _Optional[str] = ..., seed: _Optional[int] = ..., status: _Optional[str] = ..., error_message: _Optional[str] = ...) -> None: ...
+    speaker: str
+    panel_type: str
+    speaker_position: str
+    def __init__(self, index: _Optional[int] = ..., caption_vi: _Optional[str] = ..., image_url: _Optional[str] = ..., prompt_en: _Optional[str] = ..., seed: _Optional[int] = ..., status: _Optional[str] = ..., error_message: _Optional[str] = ..., speaker: _Optional[str] = ..., panel_type: _Optional[str] = ..., speaker_position: _Optional[str] = ...) -> None: ...
 
 class GetComicJobStatusRequest(_message.Message):
     __slots__ = ("job_id",)

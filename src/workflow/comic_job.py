@@ -26,6 +26,9 @@ class PanelScriptData:
     caption_vi: str
     prompt_en: str
     scene_description: str
+    speaker: str = ""
+    panel_type: str = "dialogue"
+    speaker_position: str = "center"
 
 
 @dataclass
@@ -105,6 +108,9 @@ class ComicJobState:
                     seed=int(panel.get("seed", 0)),
                     status=panel.get("status", PANEL_STATUS_PENDING),
                     error_message=panel.get("error_message", ""),
+                    speaker=panel.get("speaker", ""),
+                    panel_type=panel.get("panel_type", ""),
+                    speaker_position=panel.get("speaker_position", "center"),
                 )
             )
         return response
@@ -119,6 +125,9 @@ def _empty_panel_dict(script: PanelScriptData) -> dict[str, Any]:
         "seed": 0,
         "status": PANEL_STATUS_PENDING,
         "error_message": "",
+        "speaker": script.speaker,
+        "panel_type": script.panel_type,
+        "speaker_position": script.speaker_position,
     }
 
 
@@ -217,6 +226,9 @@ class ComicJobWorkflow:
                     caption_vi=p.caption_vi,
                     prompt_en=p.prompt_en,
                     scene_description=p.scene_description,
+                    speaker=p.speaker,
+                    panel_type=p.panel_type,
+                    speaker_position=p.speaker_position,
                 )
                 for p in story_result.panels
             ]

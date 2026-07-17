@@ -15,6 +15,8 @@ class StoryPanelResult:
     prompt_en: str
     scene_description: str
     speaker: str = ""
+    panel_type: str = "dialogue"
+    speaker_position: str = "center"
 
 
 @dataclass
@@ -77,6 +79,8 @@ class StoryClient:
                     prompt_en=raw_panel.get("image_prompt", ""),
                     scene_description=raw_panel.get("panel_type", ""),
                     speaker=raw_panel.get("speaker") or "",
+                    panel_type=raw_panel.get("panel_type") or "dialogue",
+                    speaker_position=raw_panel.get("speaker_position") or "center",
                 )
             )
         panels.sort(key=lambda p: p.index)
