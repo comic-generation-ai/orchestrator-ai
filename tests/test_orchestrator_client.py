@@ -34,7 +34,7 @@ def main() -> None:
             job_id=job_id,
             user_id="dev-user",
             summary=summary,
-            style="children",
+            style="storybook",
             num_panels=4,
             request_id=str(uuid.uuid4()),
         )

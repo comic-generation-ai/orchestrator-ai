@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -18,6 +19,19 @@ PANEL_STATUS_PENDING = "PENDING"
 PANEL_STATUS_PROCESSING = "PROCESSING"
 PANEL_STATUS_SUCCESS = "SUCCESS"
 PANEL_STATUS_FAILED = "FAILED"
+
+# Tag nhận diện nhân vật (vd "a small black crow with a shiny beak") luôn được
+# story-ai lặp lại NGUYÊN VĂN giữa các panel (xem CHARACTER CONSISTENCY trong
+# prompt_template.py) — nên 1 đoạn trùng khớp đủ dài giữa 2 prompt là dấu hiệu
+# đáng tin cậy rằng 2 panel có chung nhân vật.
+_SHARED_CHARACTER_TAG_MIN_LENGTH = 20
+
+
+def _shares_character_tag(prompt_a: str, prompt_b: str) -> bool:
+    match = difflib.SequenceMatcher(None, prompt_a, prompt_b).find_longest_match(
+        0, len(prompt_a), 0, len(prompt_b)
+    )
+    return match.size >= _SHARED_CHARACTER_TAG_MIN_LENGTH
 
 
 @dataclass
@@ -243,6 +257,7 @@ class ComicJobWorkflow:
                 return
 
             reference_url = ""
+            reference_prompt = ""
             for script in scripts:
                 if state.cancel_requested:
                     return
@@ -255,11 +270,17 @@ class ComicJobWorkflow:
                     step=f"Generating panel {panel_index + 1}/{state.num_panels}",
                 )
 
+                panel_reference_url = (
+                    reference_url
+                    if reference_url and _shares_character_tag(reference_prompt, script.prompt_en)
+                    else ""
+                )
+
                 try:
                     result = self._image_client.generate_panel(
                         prompt=script.prompt_en,
                         caption_vi=script.caption_vi,
-                        reference_image_url=reference_url,
+                        reference_image_url=panel_reference_url,
                         style=state.style,
                     )
                 except Exception as exc:
@@ -276,6 +297,7 @@ class ComicJobWorkflow:
 
                 if panel_index == 0:
                     reference_url = result.image_url
+                    reference_prompt = script.prompt_en
 
                 self._update(
                     state,
