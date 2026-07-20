@@ -53,7 +53,7 @@ class ComicJobState:
     style: str
     request_id: str
     num_panels: int
-    status: int = orchestrator_pb2.COMIC_JOB_PENDING
+    status: int = orchestrator_pb2.COMIC_JOB_QUEUED
     progress_current: int = 0
     progress_total: int = 4
     current_step: str = "Queued"
@@ -91,7 +91,7 @@ class ComicJobState:
             style=data.get("style", ""),
             request_id=data.get("request_id", ""),
             num_panels=int(data.get("num_panels", 4)),
-            status=int(data.get("status", orchestrator_pb2.COMIC_JOB_PENDING)),
+            status=int(data.get("status", orchestrator_pb2.COMIC_JOB_QUEUED)),
             progress_current=int(data.get("progress_current", 0)),
             progress_total=int(data.get("progress_total", 4)),
             current_step=data.get("current_step", ""),
@@ -177,7 +177,7 @@ class ComicJobWorkflow:
             request_id=request_id,
             num_panels=num_panels,
             progress_total=num_panels,
-            status=orchestrator_pb2.COMIC_JOB_PENDING,
+            status=orchestrator_pb2.COMIC_JOB_QUEUED,
             current_step="Job queued",
         )
         self._persist(state)
@@ -223,7 +223,7 @@ class ComicJobWorkflow:
             return
 
         try:
-            self._update(state, status=orchestrator_pb2.COMIC_JOB_STORY_GENERATING, step="Generating story")
+            self._update(state, status=orchestrator_pb2.COMIC_JOB_RUNNING, step="Generating story")
 
             if state.cancel_requested:
                 return
@@ -251,7 +251,7 @@ class ComicJobWorkflow:
             state.progress_total = len(scripts)
             state.panels = [_empty_panel_dict(script) for script in scripts]
             state.image_task_ids = [None] * len(scripts)
-            self._update(state, status=orchestrator_pb2.COMIC_JOB_STORY_READY, step="Story ready")
+            self._update(state, status=orchestrator_pb2.COMIC_JOB_RUNNING, step="Story ready")
 
             if state.cancel_requested:
                 return
@@ -266,7 +266,7 @@ class ComicJobWorkflow:
                 state.panels[panel_index]["status"] = PANEL_STATUS_PROCESSING
                 self._update(
                     state,
-                    status=orchestrator_pb2.COMIC_JOB_IMAGE_GENERATING,
+                    status=orchestrator_pb2.COMIC_JOB_RUNNING,
                     step=f"Generating panel {panel_index + 1}/{state.num_panels}",
                 )
 
@@ -301,13 +301,13 @@ class ComicJobWorkflow:
 
                 self._update(
                     state,
-                    status=orchestrator_pb2.COMIC_JOB_IMAGE_GENERATING,
+                    status=orchestrator_pb2.COMIC_JOB_RUNNING,
                     step=f"Completed panel {panel_index + 1}/{state.num_panels}",
                 )
 
             self._update(
                 state,
-                status=orchestrator_pb2.COMIC_JOB_SUCCESS,
+                status=orchestrator_pb2.COMIC_JOB_COMPLETED,
                 step="All panels completed",
             )
             logger.info("Job %s completed successfully", job_id)

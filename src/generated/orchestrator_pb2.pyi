@@ -10,21 +10,15 @@ DESCRIPTOR: _descriptor.FileDescriptor
 class ComicJobStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     COMIC_JOB_UNKNOWN: _ClassVar[ComicJobStatus]
-    COMIC_JOB_PENDING: _ClassVar[ComicJobStatus]
-    COMIC_JOB_STORY_GENERATING: _ClassVar[ComicJobStatus]
-    COMIC_JOB_STORY_READY: _ClassVar[ComicJobStatus]
-    COMIC_JOB_IMAGE_GENERATING: _ClassVar[ComicJobStatus]
-    COMIC_JOB_COMPOSING: _ClassVar[ComicJobStatus]
-    COMIC_JOB_SUCCESS: _ClassVar[ComicJobStatus]
+    COMIC_JOB_QUEUED: _ClassVar[ComicJobStatus]
+    COMIC_JOB_RUNNING: _ClassVar[ComicJobStatus]
+    COMIC_JOB_COMPLETED: _ClassVar[ComicJobStatus]
     COMIC_JOB_FAILED: _ClassVar[ComicJobStatus]
     COMIC_JOB_CANCELLED: _ClassVar[ComicJobStatus]
 COMIC_JOB_UNKNOWN: ComicJobStatus
-COMIC_JOB_PENDING: ComicJobStatus
-COMIC_JOB_STORY_GENERATING: ComicJobStatus
-COMIC_JOB_STORY_READY: ComicJobStatus
-COMIC_JOB_IMAGE_GENERATING: ComicJobStatus
-COMIC_JOB_COMPOSING: ComicJobStatus
-COMIC_JOB_SUCCESS: ComicJobStatus
+COMIC_JOB_QUEUED: ComicJobStatus
+COMIC_JOB_RUNNING: ComicJobStatus
+COMIC_JOB_COMPLETED: ComicJobStatus
 COMIC_JOB_FAILED: ComicJobStatus
 COMIC_JOB_CANCELLED: ComicJobStatus
 

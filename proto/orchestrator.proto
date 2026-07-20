@@ -12,16 +12,17 @@ service ComicOrchestratorService {
   rpc CheckHealth (CheckHealthRequest) returns (CheckHealthResponse);
 }
 
+// Khớp 1-1 với JobStatus (Postgres enum, be-comic/src/common/constants.ts).
+// COMIC_JOB_UNKNOWN=0 là sentinel mặc định của proto3, không phải business state.
+// Chi tiết pipeline nội bộ (đang sinh story/panel nào...) nằm ở current_step,
+// không cần mã hoá thêm state ở enum này.
 enum ComicJobStatus {
   COMIC_JOB_UNKNOWN = 0;
-  COMIC_JOB_PENDING = 1;
-  COMIC_JOB_STORY_GENERATING = 2;
-  COMIC_JOB_STORY_READY = 3;
-  COMIC_JOB_IMAGE_GENERATING = 4;   // đang vẽ panel (progress trong metadata)
-  COMIC_JOB_COMPOSING = 5;
-  COMIC_JOB_SUCCESS = 6;
-  COMIC_JOB_FAILED = 7;
-  COMIC_JOB_CANCELLED = 8;
+  COMIC_JOB_QUEUED = 1;
+  COMIC_JOB_RUNNING = 2;
+  COMIC_JOB_COMPLETED = 3;
+  COMIC_JOB_FAILED = 4;
+  COMIC_JOB_CANCELLED = 5;
 }
 
 message StartComicGenerationRequest {
