@@ -295,9 +295,21 @@ class ComicJobWorkflow:
                 state.image_task_ids[panel_index] = result.task_id
                 state.progress_current = panel_index + 1
 
-                if panel_index == 0:
-                    reference_url = result.image_url
-                    reference_prompt = script.prompt_en
+                # Cập nhật tham chiếu sau MỌI panel (không chỉ panel đầu tiên) — ảnh
+                # tham chiếu cho panel kế tiếp luôn là panel vừa sinh xong, không neo
+                # cứng vào panel 1. Lý do: nếu panel 1 không có mô tả nhân vật rõ ràng
+                # (cảnh mở đầu tả bối cảnh), neo cứng khiến cơ chế tham chiếu tắt vĩnh
+                # viễn cho cả truyện; nếu truyện có nhiều nhân vật xuất hiện theo cụm
+                # (vd nhân vật B chỉ xuất hiện từ panel 4 trở đi), neo panel 1 (nhân vật
+                # A) khiến B không bao giờ có tham chiếu dù đã xuất hiện ổn định ở các
+                # panel liền trước. Đánh đổi: tham chiếu có thể trôi dần qua nhiều panel
+                # liên tiếp (ảnh tham chiếu là ảnh AI sinh ra, không phải ảnh gốc) —
+                # chấp nhận được với số panel nhỏ (~4-8) đang dùng trong hệ thống này.
+                # _shares_character_tag vẫn là điều kiện chặn: nếu panel liền trước khác
+                # nhân vật với panel hiện tại, tham chiếu vẫn bị bỏ trống như cũ, tránh
+                # lẫn đặc điểm nhân vật này sang nhân vật khác.
+                reference_url = result.image_url
+                reference_prompt = script.prompt_en
 
                 self._update(
                     state,

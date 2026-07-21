@@ -90,6 +90,10 @@ class Settings(BaseSettings):
         return self.IMAGE_POLL_MAX_ATTEMPTS
 
     @property
+    def image_poll_timeout_sec(self) -> float:
+        return self.IMAGE_POLL_INTERVAL_SEC * self.IMAGE_POLL_MAX_ATTEMPTS
+
+    @property
     def story_ai_timeout_sec(self) -> float:
         return self.STORY_AI_TIMEOUT_SEC
 

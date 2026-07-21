@@ -83,7 +83,10 @@ class ImageAiClient:
 
       time.sleep(self._settings.image_poll_interval_sec)
 
-    raise TimeoutError(f"image-ai task {task_id} timeout sau {self._settings.image_poll_max_attempts} lần poll")
+    raise TimeoutError(
+      f"image-ai task {task_id} timeout sau {self._settings.image_poll_max_attempts} lần poll "
+      f"(~{self._settings.image_poll_timeout_sec:.0f}s)"
+    )
 
   def cancel_task(self, task_id: str) -> None:
     try:
