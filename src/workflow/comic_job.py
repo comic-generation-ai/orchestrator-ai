@@ -256,8 +256,15 @@ class ComicJobWorkflow:
             if state.cancel_requested:
                 return
 
-            reference_url = ""
-            reference_prompt = ""
+            # Lịch sử TẤT CẢ panel đã sinh (không chỉ panel liền trước) — dùng để
+            # neo tham chiếu vào lần XUẤT HIỆN SỚM NHẤT của 1 nhân vật thay vì luôn
+            # lấy panel vừa sinh xong. Trước đây tham chiếu là "rolling" (luôn =
+            # panel liền trước), nên nhân vật trôi dần diện mạo qua từng panel vì
+            # ảnh tham chiếu bản thân nó cũng là ảnh AI (không phải ảnh gốc) — sai
+            # lệch cộng dồn panel này qua panel khác. Neo vào panel sớm nhất có
+            # cùng nhân vật giữ 1 "ảnh gốc" cố định làm chuẩn xuyên suốt truyện,
+            # đúng như mô tả CHARACTER CONSISTENCY cố định trong prompt_template.py.
+            panel_history: list[tuple[str, str]] = []  # [(prompt_en, image_url), ...]
             for script in scripts:
                 if state.cancel_requested:
                     return
@@ -270,11 +277,11 @@ class ComicJobWorkflow:
                     step=f"Generating panel {panel_index + 1}/{state.num_panels}",
                 )
 
-                panel_reference_url = (
-                    reference_url
-                    if reference_url and _shares_character_tag(reference_prompt, script.prompt_en)
-                    else ""
-                )
+                panel_reference_url = ""
+                for past_prompt, past_image_url in panel_history:
+                    if _shares_character_tag(past_prompt, script.prompt_en):
+                        panel_reference_url = past_image_url
+                        break
 
                 try:
                     result = self._image_client.generate_panel(
@@ -295,21 +302,11 @@ class ComicJobWorkflow:
                 state.image_task_ids[panel_index] = result.task_id
                 state.progress_current = panel_index + 1
 
-                # Cập nhật tham chiếu sau MỌI panel (không chỉ panel đầu tiên) — ảnh
-                # tham chiếu cho panel kế tiếp luôn là panel vừa sinh xong, không neo
-                # cứng vào panel 1. Lý do: nếu panel 1 không có mô tả nhân vật rõ ràng
-                # (cảnh mở đầu tả bối cảnh), neo cứng khiến cơ chế tham chiếu tắt vĩnh
-                # viễn cho cả truyện; nếu truyện có nhiều nhân vật xuất hiện theo cụm
-                # (vd nhân vật B chỉ xuất hiện từ panel 4 trở đi), neo panel 1 (nhân vật
-                # A) khiến B không bao giờ có tham chiếu dù đã xuất hiện ổn định ở các
-                # panel liền trước. Đánh đổi: tham chiếu có thể trôi dần qua nhiều panel
-                # liên tiếp (ảnh tham chiếu là ảnh AI sinh ra, không phải ảnh gốc) —
-                # chấp nhận được với số panel nhỏ (~4-8) đang dùng trong hệ thống này.
-                # _shares_character_tag vẫn là điều kiện chặn: nếu panel liền trước khác
-                # nhân vật với panel hiện tại, tham chiếu vẫn bị bỏ trống như cũ, tránh
-                # lẫn đặc điểm nhân vật này sang nhân vật khác.
-                reference_url = result.image_url
-                reference_prompt = script.prompt_en
+                # Thêm panel vừa sinh vào lịch sử để các panel SAU có thể neo về nó
+                # (nếu chúng là panel sớm nhất chứa nhân vật đó) — không xoá/ghi đè
+                # panel cũ, nên nhân vật xuất hiện lần đầu ở panel nào sẽ mãi là
+                # "ảnh gốc" cho nhân vật đó, không bị cuốn theo panel gần nhất.
+                panel_history.append((script.prompt_en, result.image_url))
 
                 self._update(
                     state,
