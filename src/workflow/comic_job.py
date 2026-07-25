@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import re
 import difflib
 import logging
 import threading
@@ -26,13 +28,52 @@ PANEL_STATUS_FAILED = "FAILED"
 # đáng tin cậy rằng 2 panel có chung nhân vật.
 _SHARED_CHARACTER_TAG_MIN_LENGTH = 20
 
+def _extract_character_segments(prompt: str) -> list[dict]:
+    if not prompt:
+        return []
+    raw_segments = [s.strip() for s in prompt.split(";") if s.strip()]
+    if not raw_segments:
+        return []
+    spatial_indicators = ["on the left", "on the right", "in the center", "at the background"]
+
+    has_spatial = any(
+        any( ind in seg.lower() for ind in spatial_indicators)
+        for seg in raw_segments
+    )
+
+    character_segments = []
+    if has_spatial:
+        for seg in raw_segments:
+            if any(ind in seg.lower() for ind in spatial_indicators):
+                seg_clean = seg
+                for ind in spatial_indicators:
+                    seg_clean = re.sub(re.escape(ind) + r"\s*,\s*", "", seg_clean, flags=re.IGNORECASE)
+                    seg_clean = re.sub(re.escape(ind) + r"\s*", "", seg_clean, flags=re.IGNORECASE)
+                character_segments.append(seg_clean.strip())
+    else: 
+        character_segments.append(raw_segments[0])
+    return character_segments
+
 
 def _shares_character_tag(prompt_a: str, prompt_b: str) -> bool:
-    match = difflib.SequenceMatcher(None, prompt_a, prompt_b).find_longest_match(
-        0, len(prompt_a), 0, len(prompt_b)
-    )
-    return match.size >= _SHARED_CHARACTER_TAG_MIN_LENGTH
-
+    """
+    Xác định xem hai prompt có chung nhân vật hay không bằng cách so khớp chéo
+    các phân đoạn nhân vật sạch. Loại bỏ hoàn toàn nhiễu do trùng bối cảnh.
+    """
+    segs_a = _extract_character_segments(prompt_a)
+    segs_b = _extract_character_segments(prompt_b)
+    
+    if not segs_a or not segs_b:
+        return False
+    
+    for seg_a in segs_a:
+        for seg_b in segs_b:
+            match = difflib.SequenceMatcher(None, seg_a.lower(), seg_b.lower()).find_longest_match(
+                0, len(seg_a), 0, len(seg_b)
+            )
+            if match.size >= _SHARED_CHARACTER_TAG_MIN_LENGTH:
+                return True
+    return False
 
 @dataclass
 class PanelScriptData:

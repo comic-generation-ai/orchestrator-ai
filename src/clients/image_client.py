@@ -65,6 +65,10 @@ class ImageAiClient:
       )
       status = status_resp.status
 
+      if status == image_generation_pb2.PENDING:
+        time.sleep(self._settings.image_poll_interval_sec)
+        continue
+
       if status == image_generation_pb2.PROCESSING:
         time.sleep(self._settings.image_poll_interval_sec)
         continue
@@ -80,7 +84,7 @@ class ImageAiClient:
 
       if status == image_generation_pb2.FAILED:
         raise RuntimeError(status_resp.error_message or f"image-ai task {task_id} FAILED")
-
+      logger.warning("Task %s: unknown status %s (attempt %d)", task_id, status, attempt)
       time.sleep(self._settings.image_poll_interval_sec)
 
     raise TimeoutError(
