@@ -1,6 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
+from typing import Callable, Optional
 
 import grpc
 
@@ -33,7 +34,7 @@ class ImageAiClient:
       logger.warning("image-ai health check failed: %s", exc.details())
       return False
 
-  def generate_panel(
+  def submit_panel(
     self,
     *,
     prompt: str,
@@ -41,7 +42,11 @@ class ImageAiClient:
     reference_image_url: str = "",
     seed: int = -1,
     style: str = "",
-  ) -> ImagePanelResult:
+  ) -> str:
+    """Gửi yêu cầu sinh ảnh lên image-ai và trả về task_id NGAY LẬP TỨC,
+    trước khi polling bắt đầu — để caller có thể lưu task_id vào state
+    nhằm cancel được task đang xử lý thật sự.
+    """
     request = image_generation_pb2.GenerateImageRequest(
       prompt=prompt,
       width=self._settings.image_width,
@@ -53,12 +58,19 @@ class ImageAiClient:
       style=style or "",
     )
     response = self._stub.GenerateImageAsync(request, timeout=30)
-    task_id = response.task_id
-    logger.info("image-ai task queued: %s", task_id)
-    return self._poll_task(task_id)
+    logger.info("image-ai task queued: %s", response.task_id)
+    return response.task_id
 
-  def _poll_task(self, task_id: str) -> ImagePanelResult:
+  def poll_task(
+    self,
+    task_id: str,
+    should_cancel: "Callable[[], bool] | None" = None,
+  ) -> ImagePanelResult:
     for attempt in range(self._settings.IMAGE_POLL_MAX_ATTEMPTS):
+      if should_cancel and should_cancel():
+        self.cancel_task(task_id)
+        raise RuntimeError(f"Task {task_id} bị huỷ giữa chừng (cancel_requested)")
+
       status_resp = self._stub.GetTaskStatus(
         image_generation_pb2.TaskStatusRequest(task_id=task_id),
         timeout=15,

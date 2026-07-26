@@ -258,6 +258,10 @@ class ComicJobWorkflow:
     def _persist(self, state: ComicJobState) -> None:
         self._store.save(state.job_id, state.to_dict())
 
+    def _is_cancelled(self, job_id: str) -> bool:
+        data = self._store.load(job_id)
+        return bool(data and data.get("cancel_requested"))
+
     def _run_pipeline(self, job_id: str) -> None:
         state = self.get(job_id)
         if not state:
@@ -266,7 +270,8 @@ class ComicJobWorkflow:
         try:
             self._update(state, status=orchestrator_pb2.COMIC_JOB_RUNNING, step="Generating story")
 
-            if state.cancel_requested:
+            # BUG FIX: đọc lại Redis thay vì tin object cũ trên RAM.
+            if self._is_cancelled(job_id):
                 return
 
             story_result = self._story_client.generate_story(
@@ -294,7 +299,8 @@ class ComicJobWorkflow:
             state.image_task_ids = [None] * len(scripts)
             self._update(state, status=orchestrator_pb2.COMIC_JOB_RUNNING, step="Story ready")
 
-            if state.cancel_requested:
+            # BUG FIX: đọc lại Redis thay vì tin object cũ trên RAM.
+            if self._is_cancelled(job_id):
                 return
 
             # Lịch sử TẤT CẢ panel đã sinh (không chỉ panel liền trước) — dùng để
@@ -307,7 +313,8 @@ class ComicJobWorkflow:
             # đúng như mô tả CHARACTER CONSISTENCY cố định trong prompt_template.py.
             panel_history: list[tuple[str, str]] = []  # [(prompt_en, image_url), ...]
             for script in scripts:
-                if state.cancel_requested:
+                # BUG FIX: đọc cờ huỷ từ Redis thay vì object cũ trên RAM.
+                if self._is_cancelled(job_id):
                     return
 
                 panel_index = script.index
@@ -323,13 +330,21 @@ class ComicJobWorkflow:
                     if _shares_character_tag(past_prompt, script.prompt_en):
                         panel_reference_url = past_image_url
                         break
-
                 try:
-                    result = self._image_client.generate_panel(
+                    task_id = self._image_client.submit_panel(
                         prompt=script.prompt_en,
                         caption_vi=script.caption_vi,
                         reference_image_url=panel_reference_url,
                         style=state.style,
+                    )
+                    # Lưu task_id vào state và persist TRƯỚC KHI POLL —
+                    # cancel() chạy trên luồng gRPC khác sẽ thấy task_id này.
+                    state.image_task_ids[panel_index] = task_id
+                    self._persist(state)
+
+                    result = self._image_client.poll_task(
+                        task_id,
+                        should_cancel=lambda: self._is_cancelled(job_id),
                     )
                 except Exception as exc:
                     logger.exception("Panel %s failed for job %s", panel_index, job_id)
@@ -340,7 +355,6 @@ class ComicJobWorkflow:
                 state.panels[panel_index]["image_url"] = result.image_url
                 state.panels[panel_index]["seed"] = result.seed
                 state.panels[panel_index]["status"] = PANEL_STATUS_SUCCESS
-                state.image_task_ids[panel_index] = result.task_id
                 state.progress_current = panel_index + 1
 
                 # Thêm panel vừa sinh vào lịch sử để các panel SAU có thể neo về nó
