@@ -12,3 +12,11 @@ env/
 .env.development.local
 .env.test.local
 .env.production.local
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
