@@ -1,11 +1,16 @@
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 
 from src.config.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+class StoryGenerationCancelledError(RuntimeError):
+    """Raised when story-ai rejects generate-story because job was cancelled."""
 
 
 @dataclass
@@ -17,13 +22,55 @@ class StoryPanelResult:
     speaker: str = ""
     panel_type: str = "dialogue"
     speaker_position: str = "center"
+    character_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
 class StoryResult:
     story_title: str
     panels: list[StoryPanelResult] = field(default_factory=list)
+    characters: dict[str, dict[str, Any]] = field(default_factory=dict)
     is_fallback: bool = False
+
+
+def _parse_character_ids(raw_panel: dict[str, Any]) -> list[str]:
+    """
+    [story-orchestrator-character-ids] Changed: parse optional character_ids[] from story-ai panel (empty when teammate not merged yet).
+    """
+    raw_ids = raw_panel.get("character_ids") or []
+    if not isinstance(raw_ids, list):
+        return []
+    return [str(char_id) for char_id in raw_ids if char_id]
+
+
+def _parse_characters(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """
+    [story-orchestrator-character-ids] Changed: parse optional characters{} bible from story-ai response.
+    """
+    raw_characters = data.get("characters") or {}
+    if not isinstance(raw_characters, dict):
+        return {}
+    return {
+        str(char_id): dict(meta) if isinstance(meta, dict) else {}
+        for char_id, meta in raw_characters.items()
+    }
+
+
+def _parse_story_panel(raw_panel: dict[str, Any], fallback_index: int) -> StoryPanelResult:
+    """
+    [story-orchestrator-character-ids] Changed: map scene_description from its own field (not panel_type); include character_ids.
+    """
+    panel_number = raw_panel.get("panel_number", fallback_index + 1)
+    return StoryPanelResult(
+        index=max(panel_number - 1, 0),
+        caption_vi=raw_panel.get("dialogue") or "",
+        prompt_en=raw_panel.get("image_prompt", ""),
+        scene_description=raw_panel.get("scene_description") or "",
+        speaker=raw_panel.get("speaker") or "",
+        panel_type=raw_panel.get("panel_type") or "dialogue",
+        speaker_position=raw_panel.get("speaker_position") or "center",
+        character_ids=_parse_character_ids(raw_panel),
+    )
 
 
 class StoryClient:
@@ -49,6 +96,16 @@ class StoryClient:
             logger.warning("story-ai health check failed: %s", exc)
             return False
 
+    def cancel_story(self, job_id: str) -> None:
+        """
+        [fix-cancel] Changed: notify story-ai so a pending generate-story call can abort early.
+        """
+        try:
+            response = self.session.post(f"/cancel-story/{job_id}", timeout=10)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.warning("story-ai cancel failed for job_id=%s: %s", job_id, exc)
+
     def generate_story(
         self,
         *,
@@ -66,23 +123,18 @@ class StoryClient:
             "language": language,
         }
         response = self.session.post("/generate-story", json=payload)
+        if response.status_code == 499:
+            raise StoryGenerationCancelledError(
+                f"Story generation cancelled for job_id={job_id}",
+            )
         response.raise_for_status()
         data = response.json()
 
         panels: list[StoryPanelResult] = []
         for raw_panel in data.get("panels", []):
-            panel_number = raw_panel.get("panel_number", len(panels) + 1)
-            panels.append(
-                StoryPanelResult(
-                    index=max(panel_number - 1, 0),
-                    caption_vi=raw_panel.get("dialogue") or "",
-                    prompt_en=raw_panel.get("image_prompt", ""),
-                    scene_description=raw_panel.get("panel_type", ""),
-                    speaker=raw_panel.get("speaker") or "",
-                    panel_type=raw_panel.get("panel_type") or "dialogue",
-                    speaker_position=raw_panel.get("speaker_position") or "center",
-                )
-            )
+            if not isinstance(raw_panel, dict):
+                continue
+            panels.append(_parse_story_panel(raw_panel, len(panels)))
         panels.sort(key=lambda p: p.index)
 
         # Gán lại index theo vị trí thực tế sau khi sort — panel_number từ LLM có thể
@@ -110,6 +162,7 @@ class StoryClient:
         return StoryResult(
             story_title=data.get("story_title", ""),
             panels=panels,
+            characters=_parse_characters(data),
             is_fallback=is_fallback,
         )
 

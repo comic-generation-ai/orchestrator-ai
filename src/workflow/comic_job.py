@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from src.generated import orchestrator_pb2
 from src.clients.image_client import ImageAiClient
-from src.clients.story_client import StoryClient
+from src.clients.story_client import StoryClient, StoryGenerationCancelledError
 from src.state.redis_store import ComicJobStore
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,66 @@ def _shares_character_tag(prompt_a: str, prompt_b: str) -> bool:
                 return True
     return False
 
+
+def _char_id_for_speaker(
+    speaker: str,
+    characters: dict[str, dict[str, Any]],
+    panel_character_ids: list[str],
+) -> str | None:
+    """
+    [story-orchestrator-character-ids] Changed: map speaker name to char_id when present in panel character_ids.
+    """
+    if not speaker or not panel_character_ids:
+        return None
+    speaker_norm = speaker.strip().lower()
+    for char_id in panel_character_ids:
+        meta = characters.get(char_id) or {}
+        name = str(meta.get("name") or "").strip().lower()
+        if name and name == speaker_norm:
+            return char_id
+    return None
+
+
+def _resolve_panel_reference_url(
+    script: "PanelScriptData",
+    *,
+    characters: dict[str, dict[str, Any]],
+    char_reference_map: dict[str, str],
+    panel_history: list[tuple[str, str]],
+) -> str:
+    """
+    [story-orchestrator-character-ids] Changed: prefer char_reference_map by character_ids; fallback to fuzzy tag match.
+    """
+    if script.character_ids:
+        speaker_char_id = _char_id_for_speaker(
+            script.speaker, characters, script.character_ids
+        )
+        if speaker_char_id and speaker_char_id in char_reference_map:
+            return char_reference_map[speaker_char_id]
+        for char_id in script.character_ids:
+            if char_id in char_reference_map:
+                return char_reference_map[char_id]
+        return ""
+
+    for past_prompt, past_image_url in panel_history:
+        if _shares_character_tag(past_prompt, script.prompt_en):
+            return past_image_url
+    return ""
+
+
+def _register_char_references(
+    char_reference_map: dict[str, str],
+    character_ids: list[str],
+    image_url: str,
+) -> None:
+    """
+    [story-orchestrator-character-ids] Changed: store first panel image URL per char_id for IP-Adapter reference.
+    """
+    for char_id in character_ids:
+        if char_id not in char_reference_map:
+            char_reference_map[char_id] = image_url
+
+
 @dataclass
 class PanelScriptData:
     index: int
@@ -84,6 +144,7 @@ class PanelScriptData:
     speaker: str = ""
     panel_type: str = "dialogue"
     speaker_position: str = "center"
+    character_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -248,8 +309,11 @@ class ComicJobWorkflow:
         state.cancel_requested = True
         state.status = orchestrator_pb2.COMIC_JOB_CANCELLED
         state.current_step = "Cancelled by user"
+        state.error_message = ""
         self._persist(state)
 
+        # [fix-cancel] Changed: notify story-ai + revoke in-flight image Celery tasks.
+        self._story_client.cancel_story(job_id)
         for task_id in state.image_task_ids:
             if task_id:
                 self._image_client.cancel_task(task_id)
@@ -262,6 +326,30 @@ class ComicJobWorkflow:
         data = self._store.load(job_id)
         return bool(data and data.get("cancel_requested"))
 
+    def _finalize_cancelled(
+        self,
+        job_id: str,
+        state: Optional[ComicJobState] = None,
+    ) -> None:
+        """
+        [fix-cancel] Changed: pipeline exit must keep CANCELLED — never overwrite with FAILED.
+        """
+        state = self.get(job_id) or state
+        if not state:
+            return
+        state.cancel_requested = True
+        state.status = orchestrator_pb2.COMIC_JOB_CANCELLED
+        state.current_step = "Cancelled by user"
+        state.error_message = ""
+        self._persist(state)
+
+    def _exit_if_cancelled(self, job_id: str, state: ComicJobState) -> bool:
+        """Return True when job was cancelled and pipeline should stop."""
+        if not self._is_cancelled(job_id):
+            return False
+        self._finalize_cancelled(job_id, state)
+        return True
+
     def _run_pipeline(self, job_id: str) -> None:
         state = self.get(job_id)
         if not state:
@@ -271,15 +359,19 @@ class ComicJobWorkflow:
             self._update(state, status=orchestrator_pb2.COMIC_JOB_RUNNING, step="Generating story")
 
             # BUG FIX: đọc lại Redis thay vì tin object cũ trên RAM.
-            if self._is_cancelled(job_id):
+            if self._exit_if_cancelled(job_id, state):
                 return
 
-            story_result = self._story_client.generate_story(
-                job_id=state.job_id,
-                summary=state.summary,
-                style=state.style,
-                num_panels=state.num_panels,
-            )
+            try:
+                story_result = self._story_client.generate_story(
+                    job_id=state.job_id,
+                    summary=state.summary,
+                    style=state.style,
+                    num_panels=state.num_panels,
+                )
+            except StoryGenerationCancelledError:
+                self._finalize_cancelled(job_id, state)
+                return
             scripts = [
                 PanelScriptData(
                     index=p.index,
@@ -289,9 +381,11 @@ class ComicJobWorkflow:
                     speaker=p.speaker,
                     panel_type=p.panel_type,
                     speaker_position=p.speaker_position,
+                    character_ids=list(p.character_ids),
                 )
                 for p in story_result.panels
             ]
+            characters = story_result.characters
           
             state.num_panels = len(scripts)
             state.progress_total = len(scripts)
@@ -300,7 +394,7 @@ class ComicJobWorkflow:
             self._update(state, status=orchestrator_pb2.COMIC_JOB_RUNNING, step="Story ready")
 
             # BUG FIX: đọc lại Redis thay vì tin object cũ trên RAM.
-            if self._is_cancelled(job_id):
+            if self._exit_if_cancelled(job_id, state):
                 return
 
             # Lịch sử TẤT CẢ panel đã sinh (không chỉ panel liền trước) — dùng để
@@ -311,10 +405,12 @@ class ComicJobWorkflow:
             # lệch cộng dồn panel này qua panel khác. Neo vào panel sớm nhất có
             # cùng nhân vật giữ 1 "ảnh gốc" cố định làm chuẩn xuyên suốt truyện,
             # đúng như mô tả CHARACTER CONSISTENCY cố định trong prompt_template.py.
+            # [story-orchestrator-character-ids] char_id → first panel MinIO URL for IP-Adapter reference.
+            char_reference_map: dict[str, str] = {}
             panel_history: list[tuple[str, str]] = []  # [(prompt_en, image_url), ...]
             for script in scripts:
                 # BUG FIX: đọc cờ huỷ từ Redis thay vì object cũ trên RAM.
-                if self._is_cancelled(job_id):
+                if self._exit_if_cancelled(job_id, state):
                     return
 
                 panel_index = script.index
@@ -325,11 +421,12 @@ class ComicJobWorkflow:
                     step=f"Generating panel {panel_index + 1}/{state.num_panels}",
                 )
 
-                panel_reference_url = ""
-                for past_prompt, past_image_url in panel_history:
-                    if _shares_character_tag(past_prompt, script.prompt_en):
-                        panel_reference_url = past_image_url
-                        break
+                panel_reference_url = _resolve_panel_reference_url(
+                    script,
+                    characters=characters,
+                    char_reference_map=char_reference_map,
+                    panel_history=panel_history,
+                )
                 try:
                     task_id = self._image_client.submit_panel(
                         prompt=script.prompt_en,
@@ -347,6 +444,8 @@ class ComicJobWorkflow:
                         should_cancel=lambda: self._is_cancelled(job_id),
                     )
                 except Exception as exc:
+                    if self._exit_if_cancelled(job_id, state):
+                        return
                     logger.exception("Panel %s failed for job %s", panel_index, job_id)
                     state.panels[panel_index]["status"] = PANEL_STATUS_FAILED
                     state.panels[panel_index]["error_message"] = str(exc)
@@ -361,6 +460,11 @@ class ComicJobWorkflow:
                 # (nếu chúng là panel sớm nhất chứa nhân vật đó) — không xoá/ghi đè
                 # panel cũ, nên nhân vật xuất hiện lần đầu ở panel nào sẽ mãi là
                 # "ảnh gốc" cho nhân vật đó, không bị cuốn theo panel gần nhất.
+                _register_char_references(
+                    char_reference_map,
+                    script.character_ids,
+                    result.image_url,
+                )
                 panel_history.append((script.prompt_en, result.image_url))
 
                 self._update(
@@ -368,6 +472,9 @@ class ComicJobWorkflow:
                     status=orchestrator_pb2.COMIC_JOB_RUNNING,
                     step=f"Completed panel {panel_index + 1}/{state.num_panels}",
                 )
+
+            if self._exit_if_cancelled(job_id, state):
+                return
 
             self._update(
                 state,
@@ -377,6 +484,9 @@ class ComicJobWorkflow:
             logger.info("Job %s completed successfully", job_id)
 
         except Exception as exc:
+            if self._exit_if_cancelled(job_id, state):
+                logger.info("Job %s cancelled during pipeline", job_id)
+                return
             logger.exception("Job %s failed", job_id)
             state = self.get(job_id) or state
             state.status = orchestrator_pb2.COMIC_JOB_FAILED
