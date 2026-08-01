@@ -9,6 +9,10 @@ from src.config.settings import Settings
 logger = logging.getLogger(__name__)
 
 
+class StoryGenerationCancelledError(RuntimeError):
+    """Raised when story-ai rejects generate-story because job was cancelled."""
+
+
 @dataclass
 class StoryPanelResult:
     index: int
@@ -92,6 +96,16 @@ class StoryClient:
             logger.warning("story-ai health check failed: %s", exc)
             return False
 
+    def cancel_story(self, job_id: str) -> None:
+        """
+        [fix-cancel] Changed: notify story-ai so a pending generate-story call can abort early.
+        """
+        try:
+            response = self.session.post(f"/cancel-story/{job_id}", timeout=10)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.warning("story-ai cancel failed for job_id=%s: %s", job_id, exc)
+
     def generate_story(
         self,
         *,
@@ -109,6 +123,10 @@ class StoryClient:
             "language": language,
         }
         response = self.session.post("/generate-story", json=payload)
+        if response.status_code == 499:
+            raise StoryGenerationCancelledError(
+                f"Story generation cancelled for job_id={job_id}",
+            )
         response.raise_for_status()
         data = response.json()
 

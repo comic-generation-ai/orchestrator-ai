@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from src.generated import orchestrator_pb2
 from src.clients.image_client import ImageAiClient
-from src.clients.story_client import StoryClient
+from src.clients.story_client import StoryClient, StoryGenerationCancelledError
 from src.state.redis_store import ComicJobStore
 
 logger = logging.getLogger(__name__)
@@ -309,8 +309,11 @@ class ComicJobWorkflow:
         state.cancel_requested = True
         state.status = orchestrator_pb2.COMIC_JOB_CANCELLED
         state.current_step = "Cancelled by user"
+        state.error_message = ""
         self._persist(state)
 
+        # [fix-cancel] Changed: notify story-ai + revoke in-flight image Celery tasks.
+        self._story_client.cancel_story(job_id)
         for task_id in state.image_task_ids:
             if task_id:
                 self._image_client.cancel_task(task_id)
@@ -323,6 +326,30 @@ class ComicJobWorkflow:
         data = self._store.load(job_id)
         return bool(data and data.get("cancel_requested"))
 
+    def _finalize_cancelled(
+        self,
+        job_id: str,
+        state: Optional[ComicJobState] = None,
+    ) -> None:
+        """
+        [fix-cancel] Changed: pipeline exit must keep CANCELLED — never overwrite with FAILED.
+        """
+        state = self.get(job_id) or state
+        if not state:
+            return
+        state.cancel_requested = True
+        state.status = orchestrator_pb2.COMIC_JOB_CANCELLED
+        state.current_step = "Cancelled by user"
+        state.error_message = ""
+        self._persist(state)
+
+    def _exit_if_cancelled(self, job_id: str, state: ComicJobState) -> bool:
+        """Return True when job was cancelled and pipeline should stop."""
+        if not self._is_cancelled(job_id):
+            return False
+        self._finalize_cancelled(job_id, state)
+        return True
+
     def _run_pipeline(self, job_id: str) -> None:
         state = self.get(job_id)
         if not state:
@@ -332,15 +359,19 @@ class ComicJobWorkflow:
             self._update(state, status=orchestrator_pb2.COMIC_JOB_RUNNING, step="Generating story")
 
             # BUG FIX: đọc lại Redis thay vì tin object cũ trên RAM.
-            if self._is_cancelled(job_id):
+            if self._exit_if_cancelled(job_id, state):
                 return
 
-            story_result = self._story_client.generate_story(
-                job_id=state.job_id,
-                summary=state.summary,
-                style=state.style,
-                num_panels=state.num_panels,
-            )
+            try:
+                story_result = self._story_client.generate_story(
+                    job_id=state.job_id,
+                    summary=state.summary,
+                    style=state.style,
+                    num_panels=state.num_panels,
+                )
+            except StoryGenerationCancelledError:
+                self._finalize_cancelled(job_id, state)
+                return
             scripts = [
                 PanelScriptData(
                     index=p.index,
@@ -363,7 +394,7 @@ class ComicJobWorkflow:
             self._update(state, status=orchestrator_pb2.COMIC_JOB_RUNNING, step="Story ready")
 
             # BUG FIX: đọc lại Redis thay vì tin object cũ trên RAM.
-            if self._is_cancelled(job_id):
+            if self._exit_if_cancelled(job_id, state):
                 return
 
             # Lịch sử TẤT CẢ panel đã sinh (không chỉ panel liền trước) — dùng để
@@ -379,7 +410,7 @@ class ComicJobWorkflow:
             panel_history: list[tuple[str, str]] = []  # [(prompt_en, image_url), ...]
             for script in scripts:
                 # BUG FIX: đọc cờ huỷ từ Redis thay vì object cũ trên RAM.
-                if self._is_cancelled(job_id):
+                if self._exit_if_cancelled(job_id, state):
                     return
 
                 panel_index = script.index
@@ -413,6 +444,8 @@ class ComicJobWorkflow:
                         should_cancel=lambda: self._is_cancelled(job_id),
                     )
                 except Exception as exc:
+                    if self._exit_if_cancelled(job_id, state):
+                        return
                     logger.exception("Panel %s failed for job %s", panel_index, job_id)
                     state.panels[panel_index]["status"] = PANEL_STATUS_FAILED
                     state.panels[panel_index]["error_message"] = str(exc)
@@ -440,6 +473,9 @@ class ComicJobWorkflow:
                     step=f"Completed panel {panel_index + 1}/{state.num_panels}",
                 )
 
+            if self._exit_if_cancelled(job_id, state):
+                return
+
             self._update(
                 state,
                 status=orchestrator_pb2.COMIC_JOB_COMPLETED,
@@ -448,6 +484,9 @@ class ComicJobWorkflow:
             logger.info("Job %s completed successfully", job_id)
 
         except Exception as exc:
+            if self._exit_if_cancelled(job_id, state):
+                logger.info("Job %s cancelled during pipeline", job_id)
+                return
             logger.exception("Job %s failed", job_id)
             state = self.get(job_id) or state
             state.status = orchestrator_pb2.COMIC_JOB_FAILED
