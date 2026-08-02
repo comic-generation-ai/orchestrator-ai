@@ -358,7 +358,6 @@ class ComicJobWorkflow:
         try:
             self._update(state, status=orchestrator_pb2.COMIC_JOB_RUNNING, step="Generating story")
 
-            # BUG FIX: đọc lại Redis thay vì tin object cũ trên RAM.
             if self._exit_if_cancelled(job_id, state):
                 return
 
